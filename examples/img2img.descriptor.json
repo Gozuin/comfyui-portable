@@ -1,0 +1,54 @@
+{
+  "name": "img2img",
+  "bindings": {
+    "prompt": {
+      "node": "3",
+      "input": "text"
+    },
+    "negative": {
+      "node": "4",
+      "input": "text"
+    },
+    "seed": {
+      "node": "5",
+      "input": "seed"
+    },
+    "steps": {
+      "node": "5",
+      "input": "steps"
+    },
+    "cfg": {
+      "node": "5",
+      "input": "cfg"
+    },
+    "denoise": {
+      "node": "5",
+      "input": "denoise"
+    },
+    "reference": {
+      "node": "2",
+      "input": "image"
+    }
+  },
+  "models": {
+    "checkpoint": {
+      "node": "1",
+      "input": "ckpt_name",
+      "required": true
+    }
+  },
+  "defaults": {
+    "steps": 20,
+    "cfg": 7.0,
+    "denoise": 0.55
+  },
+  "required_nodes": [
+    "CheckpointLoaderSimple",
+    "LoadImage",
+    "VAEEncode",
+    "CLIPTextEncode",
+    "KSampler",
+    "VAEDecode",
+    "SaveImage"
+  ]
+}

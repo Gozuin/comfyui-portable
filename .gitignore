@@ -1,0 +1,8 @@
+config.local.json
+*.local.json
+outputs/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/

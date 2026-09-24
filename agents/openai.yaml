@@ -1,0 +1,4 @@
+interface:
+  display_name: "ComfyUI Portable"
+  short_description: "Discover and run host-specific ComfyUI workflows safely."
+  default_prompt: "Use $comfyui-portable to inspect the local ComfyUI profile, expand my media request without changing its meaning, and run the matching workflow."
