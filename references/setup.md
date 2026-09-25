@@ -1,91 +1,123 @@
 # Setup
 
-## What Setup Locks
+## What Setup Does
 
-`setup` writes a local profile containing:
+`setup` creates a machine-local profile and checks whether it is safe to run.
+The profile stores:
 
-- ComfyUI server URL.
-- Optional local installation root, embedded Python, input directory, and output
-  directory.
-- Workflow file paths.
-- Semantic bindings such as prompt, negative prompt, seed, steps, dimensions,
-  references, and model loader inputs.
-- Default parameter values.
-- The exact model filename selected for each model input on this computer.
+- Server URL and HTTP settings.
+- Optional ComfyUI root and Python paths for local diagnosis.
+- Workflow and descriptor paths.
+- Semantic bindings, parameter types, defaults, and required nodes.
+- The model filename actually exposed by the target server.
+- Workflow, descriptor, and node-schema hashes.
 
-The profile is written to `config.local.json` in the skill directory. It is
-excluded from Git. Do not commit it.
+The profile is written to `config.local.json` by default and is ignored by Git.
 
-## Discovery Order
+## Ready And Draft
 
-The installer uses this order for the installation root:
+Online setup must complete all required checks before writing `ready`:
+
+- `/system_stats` and `/object_info` are reachable.
+- Every graph node class exists.
+- Every model loader exposes a recognized, non-empty option list.
+- Every model value is present in that list.
+- Every binding is structurally valid and points to an existing node input.
+
+If any check fails, setup returns exit code `2` and records `draft` when it is
+safe to keep a partial profile. An existing `ready` profile is not replaced by
+a failed online setup.
+
+`--offline` intentionally writes `draft` without contacting ComfyUI. `run`
+rejects draft profiles unless `--allow-draft` is explicitly supplied.
+
+## Discovery
+
+Installation root order:
 
 1. `--comfy-root`.
 2. `COMFYUI_ROOT`.
 3. `COMFYUI_HOME`.
-4. The current directory and its parents.
+4. Current directory and parents.
 5. Common home and drive locations.
 
-For Python it checks `--python`, `COMFYUI_PYTHON`, an embedded Python next to the
-ComfyUI portable directory, then common virtual environments.
+Python order:
 
-For the server it uses `--server`, `COMFYUI_URL`, then
-`http://127.0.0.1:8188`.
+1. `--python`.
+2. `COMFYUI_PYTHON`.
+3. Embedded Python or common virtual environments.
+4. The Python executable running the tool.
 
-## Remote Or Containerized Servers
+Server order:
 
-The runtime uploads references and downloads outputs over HTTP. A local ComfyUI
-root is therefore optional. Use:
+1. `--server`.
+2. `COMFYUI_URL`.
+3. Existing profile.
+4. `http://127.0.0.1:8188`.
 
-```bash
-python scripts/comfyui_portable.py setup \
-  --server http://host.docker.internal:8188 \
-  --workflow txt2img="/workflows/txt2img.api.json"
-```
-
-If the API requires authentication, put headers in `config.local.json` or set
-`COMFYUI_API_KEY`. Do not commit either value.
+The tool does not scan arbitrary ports or start ComfyUI.
 
 ## Model Selection
 
-When `/object_info` is reachable, setup extracts the model file options exposed
-by each loader node. If the workflow's stored model filename exists on the host,
-it is locked unchanged. If it is missing, interactive setup lists local
-candidates. Non-interactive setup keeps the workflow value and `doctor` reports
-the mismatch.
+Model options come from known loader inputs returned by `/object_info`.
+Descriptor bindings can explicitly extend this to custom loader classes.
 
-Use an explicit override when needed:
+An empty option list is `known_empty`, not `unknown`. It produces:
+
+```json
+{
+  "code": "NEEDS_MODEL_SELECTION",
+  "state": "draft",
+  "candidates": []
+}
+```
+
+An interactive terminal can list candidates. Non-interactive setup returns the
+candidates in the error and never chooses one automatically. A single candidate
+is still not proof that the model architecture is compatible.
+
+## Minimal Online Example
 
 ```bash
 python scripts/comfyui_portable.py setup \
   --server http://127.0.0.1:8188 \
   --workflow txt2img="/workflows/txt2img.api.json" \
-  --model txt2img.checkpoint="actual-model.safetensors"
+  --descriptor txt2img="/workflows/txt2img.descriptor.json" \
+  --model txt2img.checkpoint="actual-model.safetensors" \
+  --json
 ```
 
-## Unfamiliar Workflows
-
-Run:
+Check the result before running:
 
 ```bash
-python scripts/comfyui_portable.py inspect "/workflows/custom.api.json"
+python scripts/comfyui_portable.py doctor --json
 ```
 
-The output lists node IDs, class types, detected bindings, model inputs, and
-defaults. If automatic detection is incomplete, copy a descriptor from
-`examples/` and add explicit bindings:
+## Offline Draft
 
-```json
-{
-  "bindings": {
-    "prompt": {"node": "6", "input": "text"},
-    "negative": {"node": "7", "input": "text"},
-    "seed": {"node": "3", "input": "seed"}
-  },
-  "models": {
-    "checkpoint": {"node": "4", "input": "ckpt_name"}
-  }
-}
+Use offline mode only when server validation is not possible yet:
+
+```bash
+python scripts/comfyui_portable.py setup \
+  --offline \
+  --workflow txt2img="/workflows/txt2img.api.json" \
+  --json
 ```
 
-Pass it during setup with `--descriptor name="/path/to/descriptor.json"`.
+The result is deliberately marked `draft`. Run online setup before real
+execution.
+
+## Remote Servers
+
+HTTP execution does not require a local ComfyUI installation:
+
+```bash
+python scripts/comfyui_portable.py setup \
+  --server http://host.docker.internal:8188 \
+  --workflow txt2img="/workflows/txt2img.api.json" \
+  --json
+```
+
+Non-loopback plain HTTP produces a warning because credentials and job data may
+be visible on the network. Put authentication headers in the local profile or
+set `COMFYUI_API_KEY`; do not commit either value.

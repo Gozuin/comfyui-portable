@@ -1,5 +1,6 @@
 {
   "name": "img2img",
+  "task_type": "image_to_image",
   "bindings": {
     "prompt": {
       "node": "3",
@@ -41,6 +42,20 @@
     "steps": 20,
     "cfg": 7.0,
     "denoise": 0.55
+  },
+  "params": {
+    "seed": {
+      "type": "integer"
+    },
+    "steps": {
+      "type": "integer"
+    },
+    "cfg": {
+      "type": "number"
+    },
+    "denoise": {
+      "type": "number"
+    }
   },
   "required_nodes": [
     "CheckpointLoaderSimple",

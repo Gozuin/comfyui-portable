@@ -1,117 +1,101 @@
 ---
 name: comfyui-portable
-description: Use when an agent must generate or edit images or videos through a local ComfyUI on an unknown or newly installed machine, especially when server addresses, installation paths, model filenames, or workflow node parameters differ by host.
+description: Use when an AI agent must generate or edit media through ComfyUI across machines with different server addresses, model filenames, node schemas, or workflow IDs; also use when a ComfyUI job must be safely planned, submitted, recovered, or diagnosed without an MCP bridge.
 metadata:
-  short-description: Discover a host ComfyUI once, then run its image and video workflows from a locked local profile.
+  short-description: Let AI call ComfyUI directly, safely, and across machines.
 ---
 
 # ComfyUI Portable
 
 ## Core Rules
 
-Use this skill when ComfyUI may be installed differently on each computer. Never
-invent a path, model filename, node ID, or workflow parameter.
+The main purpose is to let AI call ComfyUI easily through its HTTP API without
+building an MCP bridge or hard-coding one computer's models and paths.
 
-1. Read `config.local.json`. If it is missing or invalid, run `doctor`. If `doctor`
-   reports a missing profile, run `setup` first.
-2. Expand the user's media request before generation. Preserve the requested
-   subject, identity, clothing, composition, action, timing, text, colors, and
-   aspect ratio. Add only execution details that do not change intent.
-3. Prefer the locked workflow selected in the local profile. Do not rebuild an
-   arbitrary graph by hand when a matching profile exists.
-4. Use local ComfyUI first. Use another tool only when the user asks for it or the
-   local server cannot complete the task after diagnosis.
-5. Do not download models, install custom nodes, or modify ComfyUI `models/` or
-   `custom_nodes/` unless the user explicitly asks.
+1. Read `config.local.json`. It is machine-local and ignored by Git.
+2. If it is missing, run `setup`. If it is `draft`, stale, or drifted, run
+   `doctor` or configure it again. Do not run a draft profile.
+3. Expand the user's media request before generation. Preserve the subject,
+   identity, clothing, composition, timing, text, colors, and aspect ratio.
+   Add only execution details that do not change intent.
+4. Select a configured workflow. Ask when multiple workflows match.
+5. Never invent a node ID, path, model filename, or enum value.
+6. Do not download models, install nodes, open ports, or modify ComfyUI
+   settings unless the user explicitly asks.
 
-## First Run
+## Workflow
+
+### 1. Configure Once Per Machine
 
 ```bash
 python scripts/comfyui_portable.py setup \
   --server http://127.0.0.1:8188 \
-  --comfy-root "/path/to/ComfyUI" \
   --workflow txt2img="/path/to/txt2img.api.json" \
-  --descriptor txt2img="examples/txt2img.descriptor.json"
+  --descriptor txt2img="examples/txt2img.descriptor.json" \
+  --model txt2img.checkpoint="actual-model.safetensors" \
+  --json
 ```
 
-`setup` discovers the host installation, reads `/object_info`, validates model
-filenames and node classes, detects common parameter bindings, and writes
-`config.local.json`. That file is intentionally ignored by Git.
+Online setup must report `state: "ready"`. `draft` is incomplete and `run`
+rejects it. `--offline` is only for intentionally saving an unverified profile.
 
-If the workflow uses unfamiliar node classes or multiple samplers, run `inspect`,
-copy `examples/txt2img.descriptor.json`, and provide explicit semantic bindings.
-The descriptor stays portable; model filenames and paths exist only in the local
-profile.
+### 2. Inspect When Binding Is Ambiguous
 
 ```bash
 python scripts/comfyui_portable.py inspect "/path/to/workflow.api.json"
-python scripts/comfyui_portable.py doctor
+python scripts/comfyui_portable.py doctor --json
 ```
 
-## Generate
+Add descriptor bindings for multiple samplers, custom loaders, unusual text
+encoders, or shared/linked parameter values.
+
+### 3. Plan Before Submitting
 
 ```bash
 python scripts/comfyui_portable.py run \
   --workflow txt2img \
   --prompt "<expanded prompt>" \
-  --negative "<negative prompt>" \
-  --out "./result.png"
+  --negative "<explicit prohibitions only>" \
+  --dry-run \
+  --json
 ```
 
-For image-to-image or video editing, pass one or more reference files:
+Dry-run performs no upload, prompt submission, model unload, or interrupt.
+Review its upload plan and warnings before the real run.
+
+### 4. Submit and Recover
+
+For long jobs, preserve task state instead of relying on one long command:
 
 ```bash
-python scripts/comfyui_portable.py run \
-  --workflow img2img \
-  --prompt "<expanded edit instruction>" \
-  --reference "./reference.png" \
-  --out "./edited.png"
+python scripts/comfyui_portable.py submit --workflow txt2img --prompt "..." --json
+python scripts/comfyui_portable.py status --job JOB_ID --json
+python scripts/comfyui_portable.py wait --job JOB_ID --json
+python scripts/comfyui_portable.py fetch --job JOB_ID --out "./outputs" --json
 ```
 
-The runner uploads references through ComfyUI's HTTP API, submits the resolved
-graph, waits for history, and downloads outputs through `/view`. It does not rely
-on the local filesystem layout when the server is remote.
+`accepted` means ComfyUI queued the job, not that generation succeeded.
+`unknown` means do not resubmit automatically. Use the saved job manifest.
 
-## Prompt Contract
+## Reference
 
-Fill this before submitting any generation:
+Read only what the task needs:
 
-```text
-Task type:
-Input media and role:
-Desired result:
-Must preserve:
-Must change:
-Allowed additions:
-Forbidden changes:
-Style and medium:
-Composition, camera, or timeline:
-Output specification:
-Acceptance criteria:
-```
-
-Write the positive prompt around the desired result. Put only explicit
-prohibitions and common artifacts in the negative prompt. Keep exact text,
-numbers, colors, ratios, directions, and durations unchanged.
+- [references/setup.md](references/setup.md): discovery, ready/draft, model choice.
+- [references/config-schema.md](references/config-schema.md): profile, descriptor,
+  task manifests, and result fields.
+- [docs/workflow-authoring.md](docs/workflow-authoring.md): explicit bindings and
+  validation rules.
+- [docs/architecture.md](docs/architecture.md): execution flow and HTTP boundary.
+- [examples/](examples): portable API workflows and descriptors.
 
 ## Failure Handling
 
-- Missing profile: run `setup`.
-- Missing model or node class: run `doctor`; choose an installed alternative or
-  update the workflow. Do not fabricate a filename.
-- Identity, clothing, or composition drift: use the workflow's mask, inpaint, or
-  compositing path. Do not solve it by repeatedly changing the seed.
-- Prompt ignored: strengthen preservation and prohibition clauses, then inspect
-  the bound prompt node.
-- Wrong output shape: fix the width, height, or resolution bindings.
-- Video discontinuity: inspect first frame, last frame, motion peak, frame count,
-  frame rate, and audio alignment.
-- First run fails: diagnose the reported node or model, change one verified
-  variable, and retry. Do not use random regeneration as diagnosis.
-
-## Reference Files
-
-- `references/setup.md`: installation and profile generation.
-- `references/config-schema.md`: local profile and descriptor fields.
-- `examples/`: portable API-workflow and descriptor examples.
-- `scripts/comfyui_portable.py`: setup, doctor, inspect, and run commands.
+- Missing profile or `draft`: run online `setup`.
+- Model missing or empty model enum: report candidates and stop.
+- Missing node or schema drift: run `doctor`; do not fabricate a class name.
+- Binding missing or linked: add an explicit descriptor binding; do not overwrite
+  a graph link with a parameter.
+- Submission status unknown: inspect the manifest; do not blindly resubmit.
+- Identity or composition drift: use a mask, inpaint, or compositing workflow.
+  Do not hide the problem by repeatedly changing seeds.

@@ -1,5 +1,6 @@
 {
   "name": "txt2img",
+  "task_type": "text_to_image",
   "bindings": {
     "prompt": {
       "node": "2",
@@ -59,6 +60,29 @@
     "width": 512,
     "height": 512,
     "denoise": 1.0
+  },
+  "params": {
+    "seed": {
+      "type": "integer"
+    },
+    "steps": {
+      "type": "integer"
+    },
+    "cfg": {
+      "type": "number"
+    },
+    "denoise": {
+      "type": "number"
+    },
+    "width": {
+      "type": "integer"
+    },
+    "height": {
+      "type": "integer"
+    },
+    "batch_size": {
+      "type": "integer"
+    }
   },
   "required_nodes": [
     "CheckpointLoaderSimple",

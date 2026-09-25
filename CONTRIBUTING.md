@@ -14,6 +14,8 @@
 ```bash
 python -m unittest discover -s tests -v
 python -m compileall -q scripts tests
+ruff check scripts tests
+ruff format --check scripts tests
 ```
 
 ## 提交原则
@@ -23,6 +25,7 @@ python -m compileall -q scripts tests
 - 不提交模型文件、输出图片或视频。
 - 示例工作流使用占位模型名，实际模型名在 `setup` 时解析。
 - 新增节点支持时，同时增加单元测试或模拟服务测试。
+- 用户可见的修复或行为变化必须写入 `CHANGELOG.md`，用普通用户能理解的白话说明。
 - 保持 Python 标准库依赖，除非有明确且必要的理由。
 
 ## 添加工作流

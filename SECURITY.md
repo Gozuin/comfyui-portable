@@ -11,8 +11,10 @@
 - 模型文件
 - 含隐私内容的输入图片或视频
 - 生成结果
+- `.comfyui-portable/jobs/` 中的本机任务清单
 
 `config.local.json` 和 `*.local.json` 已在 `.gitignore` 中排除。
+任务清单不保存 API Token，但仍包含本机路径、提示词和任务标识，不应公开提交。
 
 ## Reporting
 

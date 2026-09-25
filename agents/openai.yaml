@@ -1,4 +1,4 @@
 interface:
   display_name: "ComfyUI Portable"
-  short_description: "Discover and run host-specific ComfyUI workflows safely."
-  default_prompt: "Use $comfyui-portable to inspect the local ComfyUI profile, expand my media request without changing its meaning, and run the matching workflow."
+  short_description: "Let AI call ComfyUI directly and safely across machines."
+  default_prompt: "Use $comfyui-portable to verify the local profile, preserve my media intent, plan safely, and run or recover the matching ComfyUI workflow without an MCP bridge."

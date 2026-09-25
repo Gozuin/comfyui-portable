@@ -1,86 +1,113 @@
 # Architecture
 
-## Design Goal
+## Goal
 
-目标是把“工作流是什么”和“这台电脑上如何执行它”分开。
+让 AI 直接调用 ComfyUI，同时把“可分享的工作流”和“某台电脑如何执行它”分开。
 
-可移植工作流描述节点关系和语义角色，本地配置描述真实服务器、路径、模型和参数。
+```text
+Agent
+  |
+  v
+comfyui-portable skill
+  |
+  +-- config.local.json (machine-local, ignored by Git)
+  +-- workflow + descriptor (portable)
+  |
+  v
+ComfyUI HTTP API
+  |
+  +-- /object_info
+  +-- /upload/image
+  +-- /prompt
+  +-- /history/{prompt_id}
+  +-- /queue
+  +-- /view
+```
+
+没有 MCP 常驻进程，也没有第二种执行核心。
 
 ## Layers
 
 ### Portable Layer
 
-仓库中可公开的部分：
+进入 Git 的内容：
 
 - `SKILL.md`
-- `scripts/comfyui_portable.py`
-- API 工作流
-- `.descriptor.json`
-- 文档和示例
+- CLI implementation
+- API workflows
+- descriptors
+- examples and documentation
 
-这一层不包含任何特定电脑的模型文件名或绝对路径。
+这里不保存任何机器的模型名、绝对路径或鉴权信息。
 
 ### Local Layer
 
 `config.local.json` 由 `setup` 生成，包含：
 
-- 服务器 URL。
-- ComfyUI 根目录和 Python。
-- 输入、输出目录。
-- 实际模型文件名。
-- 节点和参数绑定。
-- 锁定默认值。
+- 服务器和超时策略。
+- 本地诊断路径。
+- 实际模型名。
+- 严格绑定和参数类型。
+- 文件与节点 schema 指纹。
+- `ready` 或 `draft` 状态。
 
-这一层默认不进入 Git。
+### Job Layer
 
-### Runtime Layer
+`.comfyui-portable/jobs/<job-id>.json` 保存任务状态。`submit` 在提交前后持续
+更新它，使客户端重启后可以继续 `status`、`wait` 和 `fetch`。
 
-`run` 按以下顺序解析：
+## Execution Flow
+
+### Run
 
 ```text
-load graph
-  -> apply locked model values
-  -> apply workflow defaults
-  -> apply CLI parameters
-  -> upload references
-  -> apply explicit --set overrides
-  -> submit /prompt
-  -> poll /history/{prompt_id}
-  -> download /view
+load profile and workflow
+  -> verify ready / hashes / node schema
+  -> build a pure plan
+  -> validate all bindings and references
+  -> if dry-run: emit plan only
+  -> upload references with unique names
+  -> persist upload records and final graph hash
+  -> POST /prompt
+  -> persist prompt_id immediately
+  -> poll /history and /queue
+  -> fetch outputs through /view
 ```
 
-显式 `--set` 放在最后，保证 Agent 可以处理描述文件未覆盖的特殊节点。
+`/free` is not part of the default path.
 
-## Discovery
+### Submit / Recover
 
-`setup` 按顺序探测：
+```text
+submit -> manifest(prompt_id)
+status -> read manifest + /history + /queue
+wait   -> poll without resubmitting
+fetch  -> download the already accepted task
+```
 
-1. 命令行参数。
-2. 环境变量。
-3. 当前目录及父目录。
-4. 用户目录和常见安装位置。
+If a POST to `/prompt` loses its response, the state is `unknown`. The client
+does not automatically submit again.
 
-ComfyUI 的模型信息来自 `/object_info`，不是扫描文件系统。这样本地和远程服务器使用相同逻辑。
+## Validation Boundary
 
-## HTTP API
+Setup and doctor share the same rules:
 
-核心端点：
+- Required nodes are the graph classes plus descriptor extra requirements.
+- Model options are known loader inputs plus explicit descriptor extensions.
+- Empty enums, unknown model inputs, missing nodes, bad roles, malformed
+  bindings, and unconsumed defaults cannot produce `ready`.
+- Graph, descriptor, and required-node schema hashes detect drift.
 
-| 端点 | 用途 |
-| --- | --- |
-| `/system_stats` | 服务状态和设备 |
-| `/object_info` | 节点类、输入定义和模型列表 |
-| `/upload/image` | 上传参考图或视频 |
-| `/prompt` | 提交 API 工作流 |
-| `/history/{id}` | 查询执行状态和输出 |
-| `/view` | 下载输出 |
-| `/free` | 请求释放显存 |
+Server-side custom `VALIDATE_INPUTS` can still reject a graph. Static validation
+does not claim to prove media quality or full node compatibility.
 
 ## Security Boundary
 
-执行器把 ComfyUI 当作受信任的本地或远程服务，但仍做以下限制：
-
-- 不从响应中拼接任意输出路径。
-- 不使用 Shell 执行工作流参数。
-- 不在源码中保存凭据。
-- 不自动安装节点或下载模型。
+- No model download or custom-node installation.
+- No shell execution of workflow values.
+- No credentials in job manifests.
+- Upload filenames are sanitized and task-scoped.
+- Output paths are derived from response filenames and never joined with
+  arbitrary server paths.
+- Outputs are written through `.part` files.
+- Non-loopback plain HTTP produces a warning.
